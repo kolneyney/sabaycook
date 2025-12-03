@@ -2,15 +2,13 @@
 Flask==2.3.3
 gunicorn==21.2.0
 
-
 # CORS support
 Flask-Cors==6.0.1
 
-# Machine learning 
-torch==2.2.0+cpu
-torchvision==0.17.0+cpu
---extra-index-url https://download.pytorch.org/whl/cpu
-
+# Machine learning
+-f https://download.pytorch.org/whl/torch_stable.html
+torch==2.9.1+cpu
+torchvision==0.18.1+cpu
 
 # Image processing
 Pillow==10.1.0
