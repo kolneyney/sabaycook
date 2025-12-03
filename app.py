@@ -104,6 +104,8 @@ def home():
 def upload_page():
     return render_template("main.html")
 
+import tempfile
+
 @app.route("/upload", methods=["POST"])
 def upload_images():
     if "images" not in request.files:
@@ -116,13 +118,18 @@ def upload_images():
     detected_all = []
 
     for file in files:
-        filepath = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
-        file.save(filepath)
-        detected = predict_image(filepath)
-        detected_all.append(detected)
+        # Create a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+            file.save(tmp.name)  # Save uploaded file to temp
+            detected = predict_image(tmp.name)
+            detected_all.append(detected)
+        
+        # Delete the temp file after prediction
+        os.remove(tmp.name)
 
     print("Detected ingredients:", detected_all) 
     return jsonify({"detectedIngredients": detected_all})
+
 
 
 @app.route("/recommend", methods=["POST"])
