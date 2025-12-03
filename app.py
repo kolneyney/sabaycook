@@ -110,6 +110,9 @@ def upload_images():
         return jsonify({"error": "No images uploaded"}), 400
 
     files = request.files.getlist("images")
+    if not files:
+        return jsonify({"error": "No images found"}), 400
+
     detected_all = []
 
     for file in files:
@@ -118,7 +121,9 @@ def upload_images():
         detected = predict_image(filepath)
         detected_all.append(detected)
 
+    print("Detected ingredients:", detected_all) 
     return jsonify({"detectedIngredients": detected_all})
+
 
 @app.route("/recommend", methods=["POST"])
 def recommend():
