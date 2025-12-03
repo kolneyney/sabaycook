@@ -3,7 +3,7 @@ import os, torch, json
 from torchvision import transforms
 from PIL import Image
 from flask import send_from_directory
- 
+import io
 
 app = Flask(__name__)
 # Get the folder where this Flask app file is located
@@ -14,15 +14,12 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads")
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-
 # -----------------------------
 # Load Model
 # -----------------------------
-model_path = os.path.join(BASE_DIR, "fruit_veg_classifier_2.pth")  
-device = torch.device("cpu")
-model = torch.load(model_path, map_location=device)
+model_path = os.path.join(BASE_DIR, "fruit_veg_classifier_2.pth")  # or "models/fruit_veg_classifier_2.pth"
+model = torch.load(model_path, map_location="cpu", weights_only=False)
 model.eval()
-model.to(device)
 
 classes = [
     'apple', 'banana', 'beetroot', 'bell pepper', 'cabbage', 'capsicum',
@@ -78,8 +75,17 @@ def match_recipes(ingredients, recipes):
     matches = []
 
     for recipe in recipes:
-        full_text = " ".join(recipe.get("ingredients", [])).lower()
-        score = sum(1 for ing in ingredients if ing in full_text)
+        recipe_ings = [ing.lower() for ing in recipe.get("ingredients", [])]
+
+        # Count only true matches (exact or partial word match)
+        score = 0
+        for ing in ingredients:
+            for recipe_ing in recipe_ings:
+                # strict match by word splitting
+                recipe_words = recipe_ing.replace(",", " ").replace("-", " ").split()
+                if ing in recipe_words:
+                    score += 1
+                    break  # avoid double counting same ingredient
 
         if score > 0:
             matches.append({
@@ -89,8 +95,17 @@ def match_recipes(ingredients, recipes):
                 "directions": recipe["directions"]
             })
 
+    # Sort by best match
     matches.sort(key=lambda x: x["score"], reverse=True)
     return matches
+
+
+# -----------------------------
+# REMOVE OpenAI Image Generation
+# -----------------------------
+def generate_food_image(recipe_title, ingredients, instructions):
+    # Instead of generating an AI image, return placeholder
+    return "uploads/placeholder.png"
 
 
 # -----------------------------
@@ -104,33 +119,36 @@ def home():
 def upload_page():
     return render_template("main.html")
 
-import tempfile
-
 @app.route("/upload", methods=["POST"])
 def upload_images():
     if "images" not in request.files:
         return jsonify({"error": "No images uploaded"}), 400
 
     files = request.files.getlist("images")
-    if not files:
-        return jsonify({"error": "No images found"}), 400
-
     detected_all = []
 
     for file in files:
-        # Create a temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
-            file.save(tmp.name)  # Save uploaded file to temp
-            detected = predict_image(tmp.name)
-            detected_all.append(detected)
-        
-        # Delete the temp file after prediction
-        os.remove(tmp.name)
+        img = Image.open(io.BytesIO(file.read())).convert("RGB")
+        img_path = os.path.join(app.config["UPLOAD_FOLDER"], file.filename)
 
-    print("Detected ingredients:", detected_all) 
+        # Save locally only for preview
+        img.save(img_path)
+
+        # Predict directly from memory
+        img_tensor = transform(img).unsqueeze(0)
+        with torch.no_grad():
+            outputs = model(img_tensor)
+            probs = torch.softmax(outputs, dim=1)
+            confidence, predicted = torch.max(probs, 1)
+
+        if confidence.item() < 0.5:
+            detected = "No ingredient detected"
+        else:
+            detected = classes[predicted.item()]
+
+        detected_all.append(detected)
+
     return jsonify({"detectedIngredients": detected_all})
-
-
 
 @app.route("/recommend", methods=["POST"])
 def recommend():
@@ -160,13 +178,18 @@ def recommend():
 
     recommended_results = []
     for recipe in top_recipes:
-        
+        image_path = generate_food_image(
+            recipe["recipe_title"],
+            recipe["ingredients"],
+            recipe["directions"]
+        )
+        image_url = f"/uploads/{os.path.basename(image_path)}"
         recommended_results.append({
             "recipe_title": recipe["recipe_title"],
             "score": recipe["score"],
             "ingredients": recipe["ingredients"],
             "instructions": recipe["directions"],
-            
+            "image": image_url
         })
 
     return jsonify({
