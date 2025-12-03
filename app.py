@@ -3,8 +3,7 @@ import os, torch, json
 from torchvision import transforms
 from PIL import Image
 from flask import send_from_directory
-from dotenv import load_dotenv
-load_dotenv() 
+ 
 
 app = Flask(__name__)
 # Get the folder where this Flask app file is located
@@ -17,9 +16,11 @@ app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 # -----------------------------
 # Load Model
 # -----------------------------
-model_path = os.path.join(BASE_DIR, "fruit_veg_classifier_2.pth")  # or "models/fruit_veg_classifier_2.pth"
-model = torch.load(model_path, map_location="cpu", weights_only=False)
+model_path = os.path.join(BASE_DIR, "fruit_veg_classifier_2.pth")  
+device = torch.device("cpu")
+model = torch.load(model_path, map_location=device)
 model.eval()
+model.to(device)
 
 classes = [
     'apple', 'banana', 'beetroot', 'bell pepper', 'cabbage', 'capsicum',
@@ -89,13 +90,6 @@ def match_recipes(ingredients, recipes):
     matches.sort(key=lambda x: x["score"], reverse=True)
     return matches
 
-# -----------------------------
-# REMOVE OpenAI Image Generation
-# -----------------------------
-def generate_food_image(recipe_title, ingredients, instructions):
-    # Instead of generating an AI image, return placeholder
-    return "uploads/placeholder.png"
-
 
 # -----------------------------
 # ROUTES
@@ -152,18 +146,13 @@ def recommend():
 
     recommended_results = []
     for recipe in top_recipes:
-        image_path = generate_food_image(
-            recipe["recipe_title"],
-            recipe["ingredients"],
-            recipe["directions"]
-        )
-        image_url = f"/uploads/{os.path.basename(image_path)}"
+        
         recommended_results.append({
             "recipe_title": recipe["recipe_title"],
             "score": recipe["score"],
             "ingredients": recipe["ingredients"],
             "instructions": recipe["directions"],
-            "image": image_url
+            
         })
 
     return jsonify({
