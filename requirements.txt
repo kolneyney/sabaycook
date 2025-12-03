@@ -6,9 +6,11 @@ gunicorn==21.2.0
 Flask-Cors==6.0.1
 
 # Machine learning (CPU)
-torch==2.9.0+cpu
+# Machine learning (CPU)
+torch==2.2.0+cpu
 torchvision==0.17.0+cpu
 --extra-index-url https://download.pytorch.org/whl/cpu
+
 
 # Image processing
 Pillow==10.1.0
