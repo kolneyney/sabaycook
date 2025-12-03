@@ -1,5 +1,5 @@
 setuptools>=68.0.0
-wheel>=1.0.0
+
 
 # Web framework
 Flask==2.3.3
