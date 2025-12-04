@@ -7,6 +7,7 @@ const imageUpload = document.getElementById("imageUpload");
 const imagePreview = document.getElementById("imagePreview");
 const detectedOutput = document.getElementById("detectedOutput");
 const recommendBtn = document.getElementById("recommendBtn");
+const backendUrl = "https://sabaycook.onrender.com";
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
@@ -60,7 +61,7 @@ function handleImageUpload() {
     const formData = new FormData();
     selectedImages.forEach(img => formData.append("images", img));
 
-    fetch("/upload", {
+    fetch("${backendUrl}/upload", {
         method: "POST",
         body: formData
     })
@@ -178,8 +179,10 @@ function handleRecommendation() {
         </div>
     `;
 
+
+
     // Send request to server
-    fetch("/recommend", {
+    fetch("${backendUrl}/recommend", {
         method: "POST",
         headers: { 
             "Content-Type": "application/json" 
