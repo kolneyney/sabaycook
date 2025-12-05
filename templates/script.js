@@ -7,16 +7,16 @@ const imageUpload = document.getElementById("imageUpload");
 const imagePreview = document.getElementById("imagePreview");
 const detectedOutput = document.getElementById("detectedOutput");
 const recommendBtn = document.getElementById("recommendBtn");
-const backendUrl = "https://your-app.onrender.com";
+const resetBtn = document.getElementById("resetBtn"); // Added reset button
 
 // Initialize when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
     initializeEventListeners();
+    
     // Auto-select "None" on page load
     const noneCard = document.querySelector('.meat-card[data-meat="None"]');
     if (noneCard) {
-        noneCard.classList.add("selected");
-        noneCard.setAttribute('aria-pressed', 'true');
+        selectMeatCard(noneCard);
     }
 });
 
@@ -33,6 +33,23 @@ function initializeEventListeners() {
     if (recommendBtn) {
         recommendBtn.addEventListener("click", handleRecommendation);
     }
+    
+    // Reset button
+    if (resetBtn) {
+        resetBtn.addEventListener("click", resetForm);
+    }
+}
+
+// Helper function to select a meat card
+function selectMeatCard(card) {
+    card.classList.add("selected");
+    card.setAttribute('aria-pressed', 'true');
+}
+
+// Helper function to deselect a meat card
+function deselectMeatCard(card) {
+    card.classList.remove("selected");
+    card.setAttribute('aria-pressed', 'false');
 }
 
 // Handle image upload and processing
@@ -72,7 +89,11 @@ function handleImageUpload() {
         return res.json();
     })
     .then(data => {
-        detectedOutput.textContent = data.detectedIngredients.join(", ");
+        if (data.detectedIngredients && data.detectedIngredients.length > 0) {
+            detectedOutput.textContent = data.detectedIngredients.join(", ");
+        } else {
+            detectedOutput.textContent = "No ingredients detected";
+        }
     })
     .catch(error => {
         console.error('Error uploading images:', error);
@@ -102,48 +123,45 @@ function initializeMeatSelection() {
     });
 }
 
-// Handle meat selection with enhanced visual feedback
+// Handle meat selection with enhanced visual feedback - FIXED
 function handleMeatSelection(event) {
     const meat = this.dataset.meat;
     const isSelected = this.classList.contains("selected");
 
     if (meat === "None") {
-        // Only clear other selections if "None" wasn't already selected
+        // If "None" is clicked
         if (!isSelected) {
+            // Select "None" and deselect all others
             clearAllMeatSelections();
-            this.classList.add("selected");
-            this.setAttribute('aria-pressed', 'true');
+            selectMeatCard(this);
+            selectedMeat = [];
+        } else {
+            // FIXED: If "None" was already selected, deselect it
+            deselectMeatCard(this);
             selectedMeat = [];
         }
-        // If "None" was already selected, do nothing (keep it selected)
         return;
     }
 
-    // Remove "None" selection if another meat is selected
+    // If a meat type is clicked, first deselect "None" if it's selected
     const noneCard = document.querySelector('.meat-card[data-meat="None"]');
     if (noneCard && noneCard.classList.contains("selected")) {
-        noneCard.classList.remove("selected");
-        noneCard.setAttribute('aria-pressed', 'false');
+        deselectMeatCard(noneCard);
     }
 
-
-    // Toggle current selection
-    this.classList.toggle("selected");
-    this.setAttribute('aria-pressed', this.classList.contains("selected").toString());
-
-    // Update selectedMeat array
+    // Toggle current meat selection
     if (isSelected) {
+        deselectMeatCard(this);
         selectedMeat = selectedMeat.filter(m => m !== meat);
     } else {
+        selectMeatCard(this);
         selectedMeat.push(meat);
     }
 
     // If no meat selected after toggling, auto-select "None"
     if (selectedMeat.length === 0) {
-        const noneCard = document.querySelector('.meat-card[data-meat="None"]');
         if (noneCard && !noneCard.classList.contains("selected")) {
-            noneCard.classList.add("selected");
-            noneCard.setAttribute('aria-pressed', 'true');
+            selectMeatCard(noneCard);
         }
     }
 }
@@ -151,8 +169,7 @@ function handleMeatSelection(event) {
 // Clear all meat selections
 function clearAllMeatSelections() {
     document.querySelectorAll(".meat-card").forEach(card => {
-        card.classList.remove("selected");
-        card.setAttribute('aria-pressed', 'false');
+        deselectMeatCard(card);
     });
 }
 
@@ -161,7 +178,10 @@ function handleRecommendation() {
     const ingredients = detectedOutput.textContent.split(", ").filter(Boolean);
     
     // Validation
-    if (ingredients.length === 0 || ingredients[0] === "—" || ingredients[0] === "Detecting ingredients..." || ingredients[0] === "Error detecting ingredients") {
+    if (ingredients.length === 0 || ingredients[0] === "—" || 
+        ingredients[0] === "Detecting ingredients..." || 
+        ingredients[0] === "Error detecting ingredients" ||
+        ingredients[0] === "No ingredients detected") {
         alert("Please upload images of ingredients first!");
         return;
     }
@@ -178,8 +198,6 @@ function handleRecommendation() {
             <p>🔍 Analyzing your ingredients and finding the perfect recipe...</p>
         </div>
     `;
-
-
 
     // Send request to server
     fetch("/recommend", {
@@ -221,7 +239,63 @@ function handleRecommendation() {
 function displayRecommendation(data) {
     const recommendOutput = document.getElementById("recommendOutput");
     
-    if (!data.recommendedDish || data.recommendedDish === "No matching recipes found.") {
+    // Check if we have the new format (recommended array) or old format
+    if (data.recommended && data.recommended.length > 0) {
+        // New format: Show ALL recommended recipes
+        let html = "<h2>🍲 Recommended Recipes</h2>";
+        
+        data.recommended.forEach((recipe, index) => {
+            html += `
+                <div class="recipe-card">
+                    <h3>${recipe.recipe_title || 'Recipe'}</h3>
+                    
+                    <h4>📋 Ingredients:</h4>
+                    <ul>
+                        ${(recipe.ingredients || []).map(i => `<li>${i}</li>`).join("")}
+                    </ul>
+                    
+                    <h4>👩‍🍳 Instructions:</h4>
+                    <div class="recipe-instructions">
+                        <p>${formatInstructions(recipe.instructions || '')}</p>
+                    </div>
+                    
+                    ${index < data.recommended.length - 1 ? '<hr>' : ''}
+                </div>
+            `;
+        });
+        
+        recommendOutput.innerHTML = html;
+        
+    } else if (data.recommendedDish && data.recommendedDish !== "No matching recipes found.") {
+        // Old format: Single recipe
+        const formattedInstructions = formatInstructions(data.details?.instructions || '');
+        
+        recommendOutput.innerHTML = `
+            <h3>🍛 ${data.recommendedDish}</h3>
+            ${data.image ? `
+                <img src="${data.image}" alt="${data.recommendedDish}" class="food-image">
+            ` : ''}
+            
+            <div style="margin-top: 25px;">
+                <h4>📋 Ingredients</h4>
+                <ul>
+                    ${(data.details?.ingredients || []).map(i => `<li>${i}</li>`).join("")}
+                </ul>
+            </div>
+            
+            <div style="margin-top: 25px;">
+                <h4>👩‍🍳 Instructions</h4>
+                <div class="recipe-instructions">
+                    <p>${formattedInstructions}</p>
+                </div>
+            </div>
+            
+            <div class="ingredients-summary">
+                <p><strong>🎯 Based on your ingredients:</strong> ${data.detected?.join(", ") || 'Your uploaded ingredients'}</p>
+            </div>
+        `;
+    } else {
+        // No results
         recommendOutput.innerHTML = `
             <div class="no-results">
                 <h3>😞 No Recipe Found</h3>
@@ -229,56 +303,28 @@ function displayRecommendation(data) {
                 <p>Try uploading different ingredients or selecting different meat options.</p>
             </div>
         `;
-        return;
     }
-
-
-    // Format instructions with better spacing
-    const formattedInstructions = formatInstructions(data.details.instructions);
-    
-    recommendOutput.innerHTML = `
-        <h3>🍛 ${data.recommendedDish}</h3>
-        ${data.image ? `
-            <img src="${data.image}" alt="${data.recommendedDish}" class="food-image">
-        ` : ''}
-        
-        <div style="margin-top: 25px;">
-            <h4>📋 Ingredients</h4>
-            <ul>
-                ${data.details.ingredients.map(i => `<li>${i}</li>`).join("")}
-            </ul>
-        </div>
-        
-        <div style="margin-top: 25px;">
-            <h4>👩‍🍳 Instructions</h4>
-            <div class="recipe-instructions">
-                <p>${formattedInstructions}</p>
-            </div>
-        </div>
-        
-        <div class="ingredients-summary">
-            <p><strong>🎯 Based on your ingredients:</strong> ${data.detected.join(", ")}</p>
-        </div>
-    `;
 }
 
-// Format instructions with better spacing and line breaks
+// Format instructions with better spacing
 function formatInstructions(instructions) {
-    if (!instructions) return 'No instructions available.';
+    if (!instructions || instructions.trim() === '') {
+        return 'No instructions available.';
+    }
     
     // Replace numbered steps with line breaks
     let formatted = instructions
-        .replace(/(\d+\.)/g, '\n$1')  // Add line break before each numbered step
-        .replace(/\n\s*\n/g, '\n')    // Remove multiple line breaks
+        .replace(/(\d+\.)/g, '<br><br>$1')  // Add line break before each numbered step
+        .replace(/\n\s*\n/g, '<br>')        // Replace multiple line breaks with single
         .trim();
     
     // If no numbers found, try to split by periods
-    if (!formatted.includes('\n')) {
+    if (!formatted.includes('<br>')) {
         formatted = instructions
             .split('.')
             .filter(step => step.trim().length > 0)
-            .map(step => step.trim() + '.')
-            .join('\n\n');
+            .map(step => '<br><br>' + step.trim() + '.')
+            .join('');
     }
     
     return formatted;
@@ -296,8 +342,7 @@ function resetForm() {
     clearAllMeatSelections();
     const noneCard = document.querySelector('.meat-card[data-meat="None"]');
     if (noneCard) {
-        noneCard.classList.add("selected");
-        noneCard.setAttribute('aria-pressed', 'true');
+        selectMeatCard(noneCard);
     }
     
     const recommendOutput = document.getElementById("recommendOutput");
@@ -306,16 +351,9 @@ function resetForm() {
     }
 }
 
-// Add reset functionality if needed
+// Add keyboard shortcuts
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         resetForm();
-    }
-});
-
-// Add click outside to deselect (optional)
-document.addEventListener('click', function(e) {
-    if (!e.target.closest('.meat-card') && !e.target.closest('.meat-options')) {
-        // Keep current selection, don't auto-deselect
     }
 });
